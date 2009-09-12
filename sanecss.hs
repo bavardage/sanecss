@@ -4,6 +4,8 @@ import Data.List
 import Control.Monad.Reader
 import qualified Data.Map as Map
 
+import System (getArgs)
+
 indent = "  "
 
 data Declaration = Property :- Value
@@ -72,7 +74,7 @@ resolveExtension (varMap, extensionMap) e =
                               _ -> []
 
 
-data Expression = V Identifier Value | E Identifier Extension | R Rule
+data Expression = V Identifier Value | E Identifier Extension | R Rule deriving Show
 
 resolveExpressions :: [Expression] -> [Rule]
 resolveExpressions es = runReader (resolveExpressionsWith es) (Map.empty, Map.empty)
@@ -150,6 +152,14 @@ parseValue = do
                char ';'
                return $ Value value
 
+parseExtends :: Parser Identifier
+parseExtends = do
+  string "@extends:"
+  whitespace
+  identifier <- parseIdentifier
+  char ';'
+  return identifier
+
 parseSelector :: Parser Selector
 parseSelector = do
   many1 (alphaNum <|> oneOf " >#.*+[]=~|^$():-") <?> "selector"
@@ -158,27 +168,73 @@ parseSelectors :: Parser [Selector]
 parseSelectors = do
   parseSelector `sepBy` (char ',' >> whitespace)
 
-parseRule :: Parser Rule
+parseRule :: Parser Expression
 parseRule = do
   selectors <- parseSelectors
-  whitespace >> char '{' >> whitespace
+  (es, ds) <- parseRuleset
+  return $ R $ Rule selectors es ds
+
+parseVariableDefinition :: Parser Expression
+parseVariableDefinition = do
+  char '$'
+  identifier <- parseIdentifier
+  whitespace >> char '=' >> whitespace
+  value <- parseValue
+  return $ V identifier value
+
+parseExtension :: Parser Expression
+parseExtension = do
+  char '@'
+  identifier <- parseIdentifier
+  whitespace >> char '=' >> whitespace
+  (es, ds) <- parseRuleset
+  return $ E identifier $ Extension es ds
+
+parseRuleset :: Parser ([Identifier], [Declaration])
+parseRuleset = do
+  char '{' >> whitespace
+  extensions <- parseExtends `sepEndBy` whitespace
   declarations <- parseDeclaration `sepEndBy` whitespace
   char '}'
-  return $ Rule selectors [] declarations
+  return $ (extensions, declarations)
+
+parseExpressions = (parseVariableDefinition <|> parseRule <|> parseExtension) 
+                   `sepEndBy` whitespace
 
 test = putStr $ concatMap show $ resolveExpressions testExpressions
 
 
-run :: Show a => Parser a -> String -> IO ()
-run p input
-        = case (parse p "" input) of
-            Left err -> do{ putStr "parse error at "
-                          ; print err
-                          }
-            Right x  -> print x
-
 tRule = "\
 \h1, h2, #container h3, a:hover { \
+\   @extends: thick;\
+\   @extends: large;\
 \  color: $darkred; \ 
 \  font-family: 'Helvetica'; \
 \}"
+
+tExtension = "\
+\@thick = {\
+\  @extends: border; \
+\  border-width: 10px;\
+\}"
+t = "$darkred = #f90000;" ++ tExtension ++ tRule
+
+
+parseSaneCSS :: String -> String
+parseSaneCSS input = case (parse parseExpressions "" input) of
+                Left err -> do
+                  error $ "parse error at " ++ show err
+                Right es -> concatMap show $ resolveExpressions es
+
+parseFile :: String -> IO String
+parseFile filename = do
+  input <- readFile filename
+  return $ parseSaneCSS input
+
+main = do
+  args <- getArgs
+  let basefilename = head args
+      infilename = basefilename ++ ".sanecss"
+      outfilename = basefilename ++ ".css"
+  output <- parseFile infilename
+  writeFile outfilename output

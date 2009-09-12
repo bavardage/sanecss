@@ -1,0 +1,27 @@
+$background = #ff0000;
+
+@red = {
+    color: red;
+    background-color: $background;
+}
+
+@big = {
+    font-size: 50px;
+}
+
+div.foo, a:hover {
+    @extends: red;
+    @extends: big;
+    test: 10px;
+}
+
+@bignrednfat = {
+    @extends: red;
+    @extends: big;
+    border: 10px solid blue;
+}
+
+p > span {
+    @extends: bignrednfat;
+    text-align: center;
+}
