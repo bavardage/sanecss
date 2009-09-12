@@ -36,13 +36,25 @@ instance Show Rule where
           showSelectors = intercalate ", " . selectors
           showDeclarations = intercalate ";\n" . map ((indent ++) . show) . declarations
 
-type VariableMap = Map.Map Identifier Variable
-type PseudoRuleMap = Map.Map Identifier PseudoRule
-
 data SaneCSSItem = V (Identifier, Variable) | P (Identifier, PseudoRule) | R Rule
 type SaneCSS = [SaneCSSItem]
 
-evalSaneCss x = runReader 
+type VariableMap = Map.Map Identifier Variable
+type PseudoRuleMap = Map.Map Identifier PseudoRule
+data Environment = Environment { vars :: VariableMap,
+                                 prs :: PseudoRuleMap,
+                                 rules :: [Rule]}
+
+addItem :: SaneCSSItem -> Environment -> Environment
+addItem (V (i, v)) env = env {vars = Map.insert i v (vars env)}
+addItem (P (i, pr)) env = env {prs = Map.insert i (processPseudoRule env pr) (prs env)}
+addItem (R r) env = env {rules = (rules env) ++ (processRule env r)}
+
+processRule = undefined
+processPseudoRule = undefined
+
+evalSaneCss x = runReader (eval x) 
+eval = undefined
 
 
 testPseudoRule1 = PseudoRule [] ["monkeys":::Static "like food"]
